@@ -1,0 +1,135 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            os: macos-latest
+          - target: x86_64-apple-darwin
+            os: macos-latest
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        run: |
+          rustup update stable
+          rustup target add ${{ matrix.target }}
+
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Package
+        run: |
+          cd target/${{ matrix.target }}/release
+          tar -czvf ../../../jj-prompt-${{ github.ref_name }}-${{ matrix.target }}.tar.gz jj-prompt
+          cd ../../..
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: jj-prompt-${{ matrix.target }}
+          path: jj-prompt-${{ github.ref_name }}-${{ matrix.target }}.tar.gz
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+
+      - name: List artifacts
+        run: find . -type f -name "*.tar.gz"
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            jj-prompt-aarch64-apple-darwin/jj-prompt-${{ github.ref_name }}-aarch64-apple-darwin.tar.gz
+            jj-prompt-x86_64-apple-darwin/jj-prompt-${{ github.ref_name }}-x86_64-apple-darwin.tar.gz
+          generate_release_notes: true
+
+  update-homebrew:
+    needs: release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Calculate SHAs
+        id: sha
+        run: |
+          ARM64_SHA=$(shasum -a 256 jj-prompt-aarch64-apple-darwin/jj-prompt-${{ github.ref_name }}-aarch64-apple-darwin.tar.gz | awk '{print $1}')
+          X86_64_SHA=$(shasum -a 256 jj-prompt-x86_64-apple-darwin/jj-prompt-${{ github.ref_name }}-x86_64-apple-darwin.tar.gz | awk '{print $1}')
+          echo "arm64=$ARM64_SHA" >> $GITHUB_OUTPUT
+          echo "x86_64=$X86_64_SHA" >> $GITHUB_OUTPUT
+          echo "ARM64 SHA: $ARM64_SHA"
+          echo "x86_64 SHA: $X86_64_SHA"
+
+      - name: Checkout homebrew-tap
+        uses: actions/checkout@v4
+        with:
+          repository: jwbaldwin/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
+
+      - name: Update formula
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"  # Strip leading 'v'
+          
+          cat > homebrew-tap/Formula/jj-prompt.rb << 'EOF'
+          class JjPrompt < Formula
+            desc "Fast JJ prompt for Starship"
+            homepage "https://github.com/jwbaldwin/jj-prompt"
+            version "VERSION_PLACEHOLDER"
+            license "MIT"
+
+            on_macos do
+              if Hardware::CPU.arm?
+                url "https://github.com/jwbaldwin/jj-prompt/releases/download/vVERSION_PLACEHOLDER/jj-prompt-vVERSION_PLACEHOLDER-aarch64-apple-darwin.tar.gz"
+                sha256 "ARM64_SHA_PLACEHOLDER"
+              else
+                url "https://github.com/jwbaldwin/jj-prompt/releases/download/vVERSION_PLACEHOLDER/jj-prompt-vVERSION_PLACEHOLDER-x86_64-apple-darwin.tar.gz"
+                sha256 "X86_64_SHA_PLACEHOLDER"
+              end
+            end
+
+            def install
+              bin.install "jj-prompt"
+            end
+
+            test do
+              assert_match "jj-prompt", shell_output("#{bin}/jj-prompt --help")
+            end
+          end
+          EOF
+          
+          sed -i "s/VERSION_PLACEHOLDER/$VERSION/g" homebrew-tap/Formula/jj-prompt.rb
+          sed -i "s/ARM64_SHA_PLACEHOLDER/${{ steps.sha.outputs.arm64 }}/g" homebrew-tap/Formula/jj-prompt.rb
+          sed -i "s/X86_64_SHA_PLACEHOLDER/${{ steps.sha.outputs.x86_64 }}/g" homebrew-tap/Formula/jj-prompt.rb
+
+      - name: Commit and push
+        working-directory: homebrew-tap
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/jj-prompt.rb
+          git commit -m "Update jj-prompt to ${{ github.ref_name }}"
+          git push
