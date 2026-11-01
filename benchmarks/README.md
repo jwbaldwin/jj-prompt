@@ -1,14 +1,14 @@
 # Local performance investigation
 
-2026-11-01, Apple M4 Mac mini, macOS 25.6.0 arm64. Source baseline `d1d0cc28`; rustc 1.99.1 (`58cf8f9c3`), jj 0.46.0, Starship 1.27.0, Python 3.9
+2026-11-01, Apple M4 Mac mini, macOS 26.6 (Darwin 25.6.0) arm64. Source baseline `d1d0cc28`; rustc 1.99.1 (`58cf8f9c3`), jj 0.46.0, Starship 1.27.0, Python 3.9
 
 ## Binaries
 
 Built the untouched source first with `mise exec rust@stable -- cargo build --release --locked`. Cargo.lock, dependencies and release profile stayed unchanged
 
 - Baseline: `target/perf/jj-prompt-baseline`, SHA-256 `ac54ddba9884fc804a0941162da3d19c57f58ff6eda7ea2d35d14e305060304a`
-- Candidate: `target/perf/jj-prompt-candidate` (also `target/release/jj-prompt`), SHA-256 `2cf0130b063afb355cc6dc7e5cd36ea84454968ba4f37ef2b9312c1e31481717`
-- Installed v0.1.1 release: `/Users/jbaldwin/.local/bin/jj-prompt`, SHA-256 `9e68f5ab4640f646f280e509c6862b3850d1eb1255e318d369936bdab3a306a1`. It reports version 0.1.0, as does Cargo.toml. Left untouched
+- Candidate measured before the release version bump: `target/perf/jj-prompt-candidate`, SHA-256 `2cf0130b063afb355cc6dc7e5cd36ea84454968ba4f37ef2b9312c1e31481717`
+- Installed v0.1.1 control during measurement: `/Users/jbaldwin/.local/bin/jj-prompt`, SHA-256 `9e68f5ab4640f646f280e509c6862b3850d1eb1255e318d369936bdab3a306a1`. It reported version 0.1.0, as did Cargo.toml. The investigation left it untouched; the later v0.1.2 installation backed it up to `target/perf/jj-prompt-installed-v0.1.1`
 
 The investigation did not edit shell config, replace the installed binary or publish a release
 
