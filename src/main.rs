@@ -9,7 +9,7 @@ use jj_lib::hex_util::encode_reverse_hex;
 use jj_lib::object_id::ObjectId;
 use jj_lib::repo::{Repo, StoreFactories};
 use jj_lib::settings::UserSettings;
-use jj_lib::workspace::{default_working_copy_factories, Workspace};
+use jj_lib::workspace::{Workspace, default_working_copy_factories};
 use std::env;
 use std::path::{Path, PathBuf};
 use std::process::{Command as ProcessCommand, ExitCode, Stdio};
@@ -117,26 +117,28 @@ fn create_user_settings() -> Option<UserSettings> {
     UserSettings::from_config(config).ok()
 }
 
-/// Get file count by shelling out to jj (the tree diff API is complex)
+/// Count diff entries without reading file contents to compute line statistics.
 fn get_file_count(repo_root: &Path) -> Option<usize> {
     let output = ProcessCommand::new("jj")
-        .args(["diff", "--stat", "--ignore-working-copy"])
+        .args([
+            "log",
+            "--no-graph",
+            "--ignore-working-copy",
+            "-r",
+            "@",
+            "-T",
+            "self.diff().files().len()",
+        ])
         .current_dir(repo_root)
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .output()
         .ok()?;
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    // Last line looks like: "9 files changed, 449 insertions(+), 187 deletions(-)"
-    // Or just a single file: "1 file changed, 10 insertions(+)"
-    let last_line = stdout.lines().last()?;
-
-    // Extract the first number (file count)
-    last_line
-        .split_whitespace()
-        .next()
-        .and_then(|s| s.parse::<usize>().ok())
+    String::from_utf8_lossy(&output.stdout)
+        .trim()
+        .parse::<usize>()
+        .ok()
         .filter(|&n| n > 0)
 }
 
@@ -186,8 +188,8 @@ fn run_prompt(cwd: &Path, cli: &Cli) -> Option<String> {
         .flatten()
         .is_some_and(|commits| commits.len() > 1);
 
-    // File count (optional, shells out to jj)
-    let file_count = if cli.no_file_count {
+    // Empty stored commits have no file count, even with unsnapshotted edits.
+    let file_count = if cli.no_file_count || commit.is_empty(repo.as_ref()).unwrap_or(false) {
         None
     } else {
         get_file_count(&repo_root)

@@ -40,7 +40,7 @@ format = "$output "
 | `--id-length <N>` | Change ID length (default: 4) |
 | `--symbol <S>` | Symbol prefix (default: ` `) |
 | `--no-color` | Disable colors |
-| `--no-file-count` | Skip file count (~16ms vs ~57ms) |
+| `--no-file-count` | Skip file count |
 
 ## Development
 
@@ -50,7 +50,5 @@ cd ~/repos/_projects/jj-prompt && cargo build --release && cp target/release/jj-
 
 ## Performance
 
-| Mode | Time |
-|------|------|
-| With file count | ~57ms |
-| Without file count | ~16ms |
+Times depend on the repository and host. See the [local benchmark note](benchmarks/README.md)
+for measured baseline/candidate results, retained and rejected experiments, and reproduction steps.
